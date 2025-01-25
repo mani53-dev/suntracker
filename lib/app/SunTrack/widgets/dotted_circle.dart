@@ -21,8 +21,8 @@ class DottedCircle extends StatelessWidget {
         decoration: DottedDecoration(
           shape: Shape.circle,
           color: Colors.red,
-          strokeWidth: 2,
-          dash: [4, 8],
+          strokeWidth: 3,
+          dash: const [4, 10],
         ),
       ),
     );

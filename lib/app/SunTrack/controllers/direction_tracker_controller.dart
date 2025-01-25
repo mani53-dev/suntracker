@@ -127,16 +127,22 @@ class DirectionTrackerController extends GetxController {
     // Check if the camera is within 10% of alignment with the sun
     double alignmentPercentage = (1 - delta / 180).clamp(0.0, 1.0); // Normalize to a value between 0 and 1
 
-    // If the camera is within 10% alignment (alignmentPercentage > 0.9), increase the radius
+    // Smoothly update the radius based on alignment
+    double adjustedRadius = minRadius + (normalizedElevation * (maxRadius - minRadius));
+
+    // Apply alignment percentage to adjust radius smoothly
     if (alignmentPercentage > 0.9) {
-      circleRadius.value = minRadius + (normalizedElevation * (maxRadius - minRadius));
+      // The camera is very close to the sun
+      circleRadius.value = adjustedRadius; // Keep the radius as calculated
     } else {
-      // Optionally, reset the radius to the minimum when not aligned
-      circleRadius.value = minRadius;
+      // The camera is not aligned, gradually reduce the radius (but keep a baseline radius)
+      circleRadius.value = minRadius + (adjustedRadius - minRadius) * alignmentPercentage;
     }
 
     // Print for debugging purposes
-    print('Circle radius: ${circleRadius.value}, Alignment percentage: $alignmentPercentage');
+    if (kDebugMode) {
+      print('Circle radius: ${circleRadius.value}, Alignment percentage: $alignmentPercentage');
+    }
   }
 
   double calculateArrowDirection({
