@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:apsl_sun_calc/apsl_sun_calc.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -7,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:suntracker/app/SunTrack/services/motion_service.dart';
 import '../services/location_service.dart';
-
 
 class DirectionTrackerController extends GetxController {
   final AnyMotionService motionService;
@@ -18,18 +16,23 @@ class DirectionTrackerController extends GetxController {
     required this.locationService,
   });
 
-  var targetAngle = 170.0.obs; // Sun azimuth (angle in degrees)
-  var targetElevation = 0.0.obs; // Sun altitude (in degrees)
-  var heading = 0.0.obs; // Device's magnetic heading (in degrees)
+  // Constants for thresholds and ranges
+  static const double alignmentThreshold = 10.0; // Degrees tolerance
+  static const double minRadius = 100.0;
+  static const double maxRadius = 200.0;
+
+  // Reactive variables
+  var targetAngle = 170.0.obs; // Sun azimuth (degrees)
+  var targetElevation = 0.0.obs; // Sun altitude (degrees)
+  var heading = 0.0.obs; // Device's magnetic heading (degrees)
   var isCameraPointingUpward = false.obs; // Z-axis detection
-  var arrowDirection = 0.0.obs; // Angle for arrow UI
-  var circleRadius = 100.0.obs; // Circle radius for UI
+  var arrowDirection = 0.0.obs; // Arrow angle (UI)
+  var circleRadius = 100.0.obs; // UI Circle radius
   var isCameraInitialized = false.obs;
 
   late CameraController cameraController;
 
-  // Flag to track if photo has already been taken
-  var isPhotoCaptured = false.obs;
+  var isPhotoCaptured = false.obs; // Photo capture flag
   var capturedImagePath = "".obs;
 
   @override
@@ -61,13 +64,15 @@ class DirectionTrackerController extends GetxController {
 
       // Update Z-axis detection with a threshold for precision
       isCameraPointingUpward.value = data['z']! < -0.2;
+      // Add a slight offset (e.g., -5 degrees) to point the arrow slightly to the left
+      double adjustedAzimuth = targetAngle.value - 25; // Adjust this value as needed
 
       // Update arrow direction with smoothing
       arrowDirection.value = smoothRotation(
         arrowDirection.value,
         calculateArrowDirection(
           currentHeading: heading.value,
-          targetAzimuth: targetAngle.value,
+          targetAzimuth: adjustedAzimuth,
         ) + 180,
         0.1, // Smoothing factor (adjust as needed)
       );
@@ -101,7 +106,14 @@ class DirectionTrackerController extends GetxController {
       );
 
       // Update sun azimuth and elevation
+      // Correcting azimuth if it's in the opposite direction
       targetAngle.value = normalizeAngle(sunPosition["azimuth"]! * 180 / pi); // Convert radians to degrees
+
+      // Invert azimuth if necessary (this might depend on your setup)
+      if (targetAngle.value > 180) {
+        targetAngle.value = 360 - targetAngle.value;
+      }
+
       targetElevation.value = sunPosition["altitude"]! * 180 / pi; // Convert radians to degrees
 
       // Update circle radius based on the sun's elevation
@@ -110,15 +122,10 @@ class DirectionTrackerController extends GetxController {
   }
 
   void updateCircleRadius(double elevation) {
-    // Map the elevation range (-90 to 90 degrees) to a radius range (100 to 200)
-    const double minRadius = 100.0;
-    const double maxRadius = 200.0;
-
     // Normalize elevation to a value between 0 and 1 (from -90 to 90 degrees)
     double normalizedElevation = (elevation + 90) / 180;
 
     // Calculate the angular difference between the camera's heading and the sun's azimuth
-    double alignmentThreshold = 10.0; // Degrees tolerance for "close to the sun"
     double delta = calculateArrowDirection(
       currentHeading: heading.value,
       targetAzimuth: targetAngle.value,
@@ -170,8 +177,6 @@ class DirectionTrackerController extends GetxController {
 
   void checkAndCapturePhoto() {
     if (isPhotoCaptured.value) return; // Prevent multiple captures
-
-    const alignmentThreshold = 10.0; // Degrees of tolerance
 
     if ((arrowDirection.value.abs() <= alignmentThreshold) && isCameraPointingUpward.value) {
       if (!cameraController.value.isTakingPicture) {

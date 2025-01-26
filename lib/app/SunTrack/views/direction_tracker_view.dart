@@ -34,7 +34,7 @@ class DirectionTrackerView extends GetView<DirectionTrackerController> {
                           )
                         : CameraPreview(controller.cameraController),
                   ),
-                  DottedCircle(radius: controller.circleRadius)
+                  DottedCircle(radius: controller.circleRadius.value)
                       .center()
                       .visibility(!controller.isPhotoCaptured.value),
                   Center(

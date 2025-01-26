@@ -8,22 +8,20 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class DottedCircle extends StatelessWidget {
-  final RxDouble radius;
+  final double radius;
 
   const DottedCircle({super.key, required this.radius});
 
   @override
   Widget build(BuildContext context) {
-    return Obx(
-      () => Container(
-        width: radius.value * 2,
-        height: radius.value * 2,
-        decoration: DottedDecoration(
-          shape: Shape.circle,
-          color: Colors.red,
-          strokeWidth: 3,
-          dash: const [4, 10],
-        ),
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: DottedDecoration(
+        shape: Shape.circle,
+        color: Colors.red,
+        strokeWidth: 3,
+        dash: const [4, 10],
       ),
     );
   }
