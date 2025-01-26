@@ -1,19 +1,23 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:apsl_sun_calc/apsl_sun_calc.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:suntracker/app/SunTrack/services/direction_tracking_service.dart';
 import 'package:suntracker/app/SunTrack/services/motion_service.dart';
 import '../services/location_service.dart';
 
 class DirectionTrackerController extends GetxController {
   final AnyMotionService motionService;
   final AnyLocationService locationService;
+  final AnyDirectionTrackingService directionTrackingService;
 
   DirectionTrackerController({
     required this.motionService,
     required this.locationService,
+    required this.directionTrackingService,
   });
 
   // Constants for thresholds and ranges
@@ -34,6 +38,8 @@ class DirectionTrackerController extends GetxController {
 
   var isPhotoCaptured = false.obs; // Photo capture flag
   var capturedImagePath = "".obs;
+  var isGettingBrightness = false.obs;
+  var brightnessPercentage = 0.obs;
 
   @override
   void onInit() {
@@ -54,6 +60,7 @@ class DirectionTrackerController extends GetxController {
       isCameraInitialized.value = true;
     } catch (e) {
       Get.snackbar("Camera Error", e.toString());
+      print(e);
       isCameraInitialized.value = false;
     }
   }
@@ -180,13 +187,18 @@ class DirectionTrackerController extends GetxController {
 
     if ((arrowDirection.value.abs() <= alignmentThreshold) && isCameraPointingUpward.value) {
       if (!cameraController.value.isTakingPicture) {
-        cameraController.takePicture().then((picture) {
+        cameraController.takePicture().then((picture) async {
           capturedImagePath.value = picture.path;
           showDefaultDialog(picture);
           isPhotoCaptured.value = true; // Mark photo as captured
           stopTracking(); // Stop all tracking after capturing photo
+          // isGettingBrightness.value = true;
+          // brightnessPercentage = await directionTrackingService.getSunBrightness(sunImage: File(picture.path));
+          // print(brightnessPercentage);
+
         }).catchError((e) {
           Get.snackbar("Error", "Failed to capture photo: $e");
+          print(e);
         });
       }
     }

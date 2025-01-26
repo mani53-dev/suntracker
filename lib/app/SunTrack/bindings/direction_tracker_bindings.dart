@@ -4,6 +4,7 @@
  */
 
 import 'package:get/get.dart';
+import 'package:suntracker/app/SunTrack/services/direction_tracking_service.dart';
 
 import '../controllers/direction_tracker_controller.dart';
 import '../services/location_service.dart';
@@ -14,11 +15,13 @@ class DirectionTrackerBindings extends Bindings {
   void dependencies() {
     Get.lazyPut(() => MotionService());
     Get.lazyPut(() => LocationService());
+    Get.lazyPut(() => DirectionTrackingService());
 
     Get.lazyPut(
       () => DirectionTrackerController(
         motionService: Get.find<MotionService>(),
         locationService: Get.find<LocationService>(),
+        directionTrackingService: Get.find<DirectionTrackingService>(),
       ),
     );
   }

@@ -21,6 +21,7 @@ dependencies:
   camera: ^0.11.0+2
   dotted_decoration: ^2.0.0
   flutter_compass: ^0.8.1
+  dio: ^4.0.6
 
 dev_dependencies:
   flutter_test:
