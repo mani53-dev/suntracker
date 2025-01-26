@@ -34,9 +34,9 @@ class DirectionTrackerView extends GetView<DirectionTrackerController> {
                           )
                         : CameraPreview(controller.cameraController),
                   ),
-                  DottedCircle(radius: controller.circleRadius.value)
-                      .center()
-                      .visibility(!controller.isPhotoCaptured.value),
+                  // DottedCircle(radius: controller.circleRadius.value)
+                  //     .center()
+                  //     .visibility(!controller.isPhotoCaptured.value),
                   Center(
                     child: Transform.rotate(
                       angle: controller.arrowDirection.value * (pi / 180),

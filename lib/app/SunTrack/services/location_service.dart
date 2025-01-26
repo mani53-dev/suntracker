@@ -34,6 +34,7 @@ class LocationService implements AnyLocationService {
     }
 
     PermissionStatus permission = await _location.hasPermission();
+    permission = await _location.requestPermission();
     if (permission == PermissionStatus.denied) {
       permission = await _location.requestPermission();
       if (permission != PermissionStatus.granted) {

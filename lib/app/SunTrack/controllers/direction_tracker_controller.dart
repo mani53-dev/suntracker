@@ -65,7 +65,7 @@ class DirectionTrackerController extends GetxController {
       // Update Z-axis detection with a threshold for precision
       isCameraPointingUpward.value = data['z']! < -0.2;
       // Add a slight offset (e.g., -5 degrees) to point the arrow slightly to the left
-      double adjustedAzimuth = targetAngle.value - 25; // Adjust this value as needed
+      double adjustedAzimuth = targetAngle.value + 10; // Adjust this value as needed
 
       // Update arrow direction with smoothing
       arrowDirection.value = smoothRotation(
