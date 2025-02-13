@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:apsl_sun_calc/apsl_sun_calc.dart';
+import 'package:artools/artools.dart';
 import 'package:camera/camera.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -39,7 +41,8 @@ class DirectionTrackerController extends GetxController {
   var isPhotoCaptured = false.obs; // Photo capture flag
   var capturedImagePath = "".obs;
   var isGettingBrightness = false.obs;
-  var brightnessPercentage = 0.obs;
+  var brightnessPercentage = 0.0.obs;
+  var isSunDetected = false.obs;
 
   @override
   void onInit() {
@@ -67,20 +70,23 @@ class DirectionTrackerController extends GetxController {
 
   void startTrackingMotion() {
     motionService.startTrackingMotion((data) {
-      if (isPhotoCaptured.value) return; // Stop tracking if photo is already taken
+      if (isPhotoCaptured.value)
+        return; // Stop tracking if photo is already taken
 
       // Update Z-axis detection with a threshold for precision
       isCameraPointingUpward.value = data['z']! < -0.2;
       // Add a slight offset (e.g., -5 degrees) to point the arrow slightly to the left
-      double adjustedAzimuth = targetAngle.value + -25; // Adjust this value as needed
+      double adjustedAzimuth =
+          targetAngle.value + -25; // Adjust this value as needed
 
       // Update arrow direction with smoothing
       arrowDirection.value = smoothRotation(
         arrowDirection.value,
         calculateArrowDirection(
-          currentHeading: heading.value,
-          targetAzimuth: adjustedAzimuth,
-        ) + 180,
+              currentHeading: heading.value,
+              targetAzimuth: adjustedAzimuth,
+            ) +
+            180,
         0.1, // Smoothing factor (adjust as needed)
       );
 
@@ -98,10 +104,12 @@ class DirectionTrackerController extends GetxController {
     DateTime? lastUpdate;
 
     locationService.startTrackingCurrentLocation((location) {
-      if (isPhotoCaptured.value) return; // Stop tracking if photo is already taken
+      if (isPhotoCaptured.value)
+        return; // Stop tracking if photo is already taken
 
       final now = DateTime.now();
-      if (lastUpdate != null && now.difference(lastUpdate!) < const Duration(seconds: 5)) {
+      if (lastUpdate != null &&
+          now.difference(lastUpdate!) < const Duration(seconds: 5)) {
         return; // Skip if less than 5 seconds have passed
       }
       lastUpdate = now;
@@ -114,14 +122,16 @@ class DirectionTrackerController extends GetxController {
 
       // Update sun azimuth and elevation
       // Correcting azimuth if it's in the opposite direction
-      targetAngle.value = normalizeAngle(sunPosition["azimuth"]! * 180 / pi); // Convert radians to degrees
+      targetAngle.value = normalizeAngle(
+          sunPosition["azimuth"]! * 180 / pi); // Convert radians to degrees
 
       // Invert azimuth if necessary (this might depend on your setup)
       if (targetAngle.value > 180) {
         targetAngle.value = 360 - targetAngle.value;
       }
 
-      targetElevation.value = sunPosition["altitude"]! * 180 / pi; // Convert radians to degrees
+      targetElevation.value =
+          sunPosition["altitude"]! * 180 / pi; // Convert radians to degrees
 
       // Update circle radius based on the sun's elevation
       updateCircleRadius(targetElevation.value);
@@ -139,10 +149,12 @@ class DirectionTrackerController extends GetxController {
     ).abs();
 
     // Check if the camera is within 10% of alignment with the sun
-    double alignmentPercentage = (1 - delta / 180).clamp(0.0, 1.0); // Normalize to a value between 0 and 1
+    double alignmentPercentage = (1 - delta / 180)
+        .clamp(0.0, 1.0); // Normalize to a value between 0 and 1
 
     // Smoothly update the radius based on alignment
-    double adjustedRadius = minRadius + (normalizedElevation * (maxRadius - minRadius));
+    double adjustedRadius =
+        minRadius + (normalizedElevation * (maxRadius - minRadius));
 
     // Apply alignment percentage to adjust radius smoothly
     if (alignmentPercentage > 0.9) {
@@ -150,12 +162,14 @@ class DirectionTrackerController extends GetxController {
       circleRadius.value = adjustedRadius; // Keep the radius as calculated
     } else {
       // The camera is not aligned, gradually reduce the radius (but keep a baseline radius)
-      circleRadius.value = minRadius + (adjustedRadius - minRadius) * alignmentPercentage;
+      circleRadius.value =
+          minRadius + (adjustedRadius - minRadius) * alignmentPercentage;
     }
 
     // Print for debugging purposes
     if (kDebugMode) {
-      print('Circle radius: ${circleRadius.value}, Alignment percentage: $alignmentPercentage');
+      print(
+          'Circle radius: ${circleRadius.value}, Alignment percentage: $alignmentPercentage');
     }
   }
 
@@ -185,20 +199,28 @@ class DirectionTrackerController extends GetxController {
   void checkAndCapturePhoto() {
     if (isPhotoCaptured.value) return; // Prevent multiple captures
 
-    if ((arrowDirection.value.abs() <= alignmentThreshold) && isCameraPointingUpward.value) {
+    if ((arrowDirection.value.abs() <= alignmentThreshold) &&
+        isCameraPointingUpward.value) {
       if (!cameraController.value.isTakingPicture) {
         cameraController.takePicture().then((picture) async {
           capturedImagePath.value = picture.path;
           showDefaultDialog(picture);
-          isPhotoCaptured.value = true; // Mark photo as captured
-          stopTracking(); // Stop all tracking after capturing photo
-          // isGettingBrightness.value = true;
-          // brightnessPercentage = await directionTrackingService.getSunBrightness(sunImage: File(picture.path));
-          // print(brightnessPercentage);
-
+          isPhotoCaptured.value = true;
+          stopTracking();
+          try {
+            isGettingBrightness.value = true;
+            var response = await directionTrackingService.getSunBrightness(
+                sunImage: File(picture.path));
+            brightnessPercentage.value = response['brightness_percentage'];
+            isSunDetected.value = response['sun_detected'];
+          } on DioError catch (e) {
+            Get.snackbar("Error", "There was an error getting results!");
+          } finally {
+            isGettingBrightness.value = false;
+          }
         }).catchError((e) {
           Get.snackbar("Error", "Failed to capture photo: $e");
-          print(e);
+          printD(e);
         });
       }
     }
@@ -214,13 +236,28 @@ class DirectionTrackerController extends GetxController {
     Get.dialog(
       AlertDialog(
         title: const Text("Success"),
-        content: Text("Photo captured: ${picture.path}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Photo captured: ${picture.path}").marginOnly(bottom: 20),
+            Obx(() => isGettingBrightness.value
+                ? const CircularProgressIndicator()
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text("Sun Brightness: ${brightnessPercentage.value}")
+                          .marginOnly(bottom: 12),
+                      Text("Sun Detected? ${isSunDetected.value}"),
+                    ],
+                  ))
+          ],
+        ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Get.back(); // Dismiss the dialog
-            },
-            child: const Text("Close"),
+          Obx(
+            () => TextButton(
+              onPressed: isGettingBrightness.value ? null : () => Get.back(),
+              child: const Text("Close"),
+            ),
           ),
         ],
       ),

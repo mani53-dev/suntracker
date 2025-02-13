@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:artools/artools.dart';
+import 'package:dio/adapter.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -14,7 +17,7 @@ class DioClient {
     return _instance!;
   }
 
-  static const String _baseURL = "http://127.0.0.1:5000/";
+  static const String _baseURL = "https://affine.affinesol.com/";
   late Dio _dio;
 
   DioClient._internal() {
@@ -30,6 +33,13 @@ class DioClient {
 
     _dio = Dio(options);
 
+    // ✅ Bypass SSL Certificate Validation (For Both Dev & Production)
+    (_dio.httpClientAdapter as DefaultHttpClientAdapter).onHttpClientCreate =
+        (HttpClient client) {
+      client.badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+      return client;
+    };
 
     _dio.interceptors.add(
       InterceptorsWrapper(
@@ -79,7 +89,7 @@ class DioClient {
       );
       return response.data;
     } on DioError catch (e) {
-      debugPrint("Dio Error: ${e.response?.data}");
+      debugPrint("Dio Error: $e");
       rethrow;
     }
   }
