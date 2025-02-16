@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'dart:math';
 import 'package:apsl_sun_calc/apsl_sun_calc.dart';
 import 'package:artools/artools.dart';
 import 'package:camera/camera.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -70,14 +68,12 @@ class DirectionTrackerController extends GetxController {
 
   void startTrackingMotion() {
     motionService.startTrackingMotion((data) {
-      if (isPhotoCaptured.value)
-        return; // Stop tracking if photo is already taken
+      if (isPhotoCaptured.value) return;
 
       // Update Z-axis detection with a threshold for precision
       isCameraPointingUpward.value = data['z']! < -0.2;
       // Add a slight offset (e.g., -5 degrees) to point the arrow slightly to the left
-      double adjustedAzimuth =
-          targetAngle.value + -25; // Adjust this value as needed
+      double adjustedAzimuth = targetAngle.value; // Adjust this value as needed
 
       // Update arrow direction with smoothing
       arrowDirection.value = smoothRotation(
@@ -207,17 +203,18 @@ class DirectionTrackerController extends GetxController {
           showDefaultDialog(picture);
           isPhotoCaptured.value = true;
           stopTracking();
-          try {
-            isGettingBrightness.value = true;
-            var response = await directionTrackingService.getSunBrightness(
-                sunImage: File(picture.path));
-            brightnessPercentage.value = response['brightness_percentage'];
-            isSunDetected.value = response['sun_detected'];
-          } on DioError catch (e) {
-            Get.snackbar("Error", "There was an error getting results!");
-          } finally {
-            isGettingBrightness.value = false;
-          }
+          // try {
+          //   isGettingBrightness.value = true;
+          //   var response = await directionTrackingService.getSunBrightness(
+          //     sunImage: File(picture.path),
+          //   );
+          //   brightnessPercentage.value = response['brightness_percentage'];
+          //   isSunDetected.value = response['sun_detected'];
+          // } on DioError catch (e) {
+          //   Get.snackbar("Error", "There was an error getting results!");
+          // } finally {
+          //   isGettingBrightness.value = false;
+          // }
         }).catchError((e) {
           Get.snackbar("Error", "Failed to capture photo: $e");
           printD(e);
