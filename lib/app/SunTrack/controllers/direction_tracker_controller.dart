@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:apsl_sun_calc/apsl_sun_calc.dart';
+import 'package:artools/artools.dart';
 import 'package:camera/camera.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/direction_tracking_service.dart';
@@ -20,9 +23,10 @@ class DirectionTrackerController extends GetxController {
 
   static const double minRadius = 70.0;
   static const double maxRadius = 180.0;
-  static const double azimuthThreshold = 5.0; // Require closer alignment
-  static const double altitudeThreshold = 5.0; // Require closer vertical alignment
-  static const double minPitchForSky = 15.0; // Prevents horizon captures
+  static const double azimuthThreshold = 5.0;
+  static const double altitudeThreshold = 5.0;
+  static const double minPitchForSky = 15.0;
+  var isCameraPointingUpward = false.obs; // Z-axis detection
 
   var targetAzimuth = 0.0.obs;
   var targetElevation = 0.0.obs;
@@ -32,6 +36,9 @@ class DirectionTrackerController extends GetxController {
   var isCameraInitialized = false.obs;
   var isPhotoCaptured = false.obs;
   var capturedImagePath = "".obs;
+  var isGettingBrightness = false.obs;
+  var brightnessPercentage = 0.0.obs;
+  var isSunDetected = false.obs;
   late CameraController cameraController;
 
   @override
@@ -59,17 +66,17 @@ class DirectionTrackerController extends GetxController {
 
   /// **Track Motion & Adjust Arrow**
   void startTrackingMotion() {
-    motionService.startTrackingMotion((_) {
+    motionService.startTrackingMotion((data) {
       if (isPhotoCaptured.value) return;
+      isCameraPointingUpward.value = data['z']! < -0.2;
 
-      // Continuously update heading and arrow direction
       arrowDirection.value = smoothRotation(
         arrowDirection.value,
         calculateArrowDirection(heading.value, targetAzimuth.value),
-        0.2, // Smooth transition
+        0.2,
       );
 
-      updateCircleRadius(); // Ensure real-time radius changes
+      updateCircleRadius();
       checkAndCapturePhoto();
     });
 
@@ -77,7 +84,7 @@ class DirectionTrackerController extends GetxController {
       heading.value = normalizeAngle(magneticHeading);
     });
 
-    ever(heading, (_) => updateCircleRadius()); // Ensure radius updates with heading changes
+    ever(heading, (_) => updateCircleRadius());
   }
 
   /// **Track Sun Position**
@@ -87,27 +94,18 @@ class DirectionTrackerController extends GetxController {
 
       final now = DateTime.now();
 
-      // Get sun position
       final sunPosition = SunCalc.getSunPosition(
         now,
         location.latitude as num,
         location.longitude as num,
       );
 
-      // Azimuth: Convert from radians to degrees and normalize to 0-360
-      double sunAzimuth = normalizeAngle(sunPosition["azimuth"]! * 180 / pi);
-
-      // Altitude: Convert from radians to degrees
+      double sunAzimuth = normalizeAngle((sunPosition["azimuth"]! * 180 / pi) + 180);
       double sunAltitude = sunPosition["altitude"]! * 180 / pi;
 
-      // Update target azimuth and elevation if they change significantly
-      if ((targetAzimuth.value - sunAzimuth).abs() > 0.1 ||
-          (targetElevation.value - sunAltitude).abs() > 0.1) {
+      if ((targetAzimuth.value - sunAzimuth).abs() > 0.1 || (targetElevation.value - sunAltitude).abs() > 0.1) {
         targetAzimuth.value = sunAzimuth;
         targetElevation.value = sunAltitude;
-
-        updateCircleRadius();
-        checkAndCapturePhoto(); // Ensure photo capture logic runs immediately
       }
     });
   }
@@ -115,17 +113,23 @@ class DirectionTrackerController extends GetxController {
   /// **Dynamically Adjust Sun Circle Radius**
   void updateCircleRadius() {
     double elevationFactor = (targetElevation.value + 90) / 180;
-    double azimuthDifference = calculateArrowDirection(heading.value, targetAzimuth.value).abs();
+    double azimuthDifference =
+        calculateArrowDirection(heading.value, targetAzimuth.value).abs();
     double alignmentFactor = (1 - azimuthDifference / 90).clamp(0.0, 1.0);
 
-    double adjustedRadius = minRadius + (alignmentFactor * (maxRadius - minRadius) * elevationFactor);
+    double adjustedRadius = minRadius +
+        (alignmentFactor * (maxRadius - minRadius) * elevationFactor);
     circleRadius.value = adjustedRadius.clamp(minRadius, maxRadius);
   }
 
   /// **Calculate Arrow Direction**
   double calculateArrowDirection(double currentHeading, double targetAzimuth) {
     double delta = normalizeAngle(targetAzimuth - currentHeading);
-    return (delta > 180) ? delta - 360 : (delta < -180) ? delta + 360 : delta;
+    return (delta > 180)
+        ? delta - 360
+        : (delta < -180)
+            ? delta + 360
+            : delta;
   }
 
   /// **Ensure Angle is Between 0-360**
@@ -140,34 +144,80 @@ class DirectionTrackerController extends GetxController {
 
   /// **Check Alignment & Capture Photo**
   void checkAndCapturePhoto() {
-    if (isPhotoCaptured.value || !isCameraInitialized.value) return;
+    if (isPhotoCaptured.value) return; // Prevent multiple captures
 
-    double azimuthError = (calculateArrowDirection(heading.value, targetAzimuth.value)).abs();
-    double altitudeError = (targetElevation.value - motionService.getPitch()).abs();
-    double pitch = motionService.getPitch();
-
-    // Debugging: Print values to verify accuracy
-    print("Azimuth Error: $azimuthError, Altitude Error: $altitudeError, Pitch: $pitch");
-
-    if (azimuthError <= azimuthThreshold &&
-        altitudeError <= altitudeThreshold &&
-        pitch > minPitchForSky) {
-      capturePhoto();
+    if ((arrowDirection.value.abs() <= 10.0) &&
+        isCameraPointingUpward.value) {
+      if (!cameraController.value.isTakingPicture) {
+        cameraController.takePicture().then((picture) async {
+          capturedImagePath.value = picture.path;
+          showDefaultDialog(picture);
+          isPhotoCaptured.value = true;
+          stopTracking();
+          try {
+            isGettingBrightness.value = true;
+            var response = await directionTrackingService.getSunBrightness(
+                sunImage: File(picture.path));
+            brightnessPercentage.value = response['brightness_percentage'];
+            isSunDetected.value = response['sun_detected'];
+          } on DioError catch (e) {
+            Get.snackbar("Error", "There was an error getting results! - $e");
+          } finally {
+            isGettingBrightness.value = false;
+          }
+        }).catchError((e) {
+          Get.snackbar("Error", "Failed to capture photo: $e");
+          printD(e);
+        });
+      }
     }
   }
 
-
   /// **Capture Photo**
-  void capturePhoto() {
+  Future<void> capturePhoto() async {
     if (!cameraController.value.isTakingPicture) {
-      cameraController.takePicture().then((picture) {
+      try {
+        final picture = await cameraController.takePicture();
         capturedImagePath.value = picture.path;
         isPhotoCaptured.value = true;
         stopTracking();
-      }).catchError((e) {
+      } catch (e) {
         Get.snackbar("Error", "Failed to capture photo: $e");
-      });
+      }
     }
+  }
+
+  void showDefaultDialog(picture) {
+    Get.dialog(
+      barrierDismissible: false,
+      AlertDialog(
+        title: const Text("Success"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Photo captured: ${picture.path}").marginOnly(bottom: 20),
+            Obx(() => isGettingBrightness.value
+                ? const CircularProgressIndicator()
+                : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("Sun Brightness: ${brightnessPercentage.value}")
+                    .marginOnly(bottom: 12),
+                Text("Sun Detected? ${isSunDetected.value}"),
+              ],
+            ))
+          ],
+        ),
+        actions: [
+          Obx(
+                () => TextButton(
+              onPressed: isGettingBrightness.value ? null : () => Get.back(),
+              child: const Text("Close"),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// **Stop Tracking After Capture**
